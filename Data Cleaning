@@ -1,0 +1,196 @@
+
+Data Cleaning in SQL Queries using Nashville Housing Property dataset
+*/
+
+-- Shows the entire dataset rows and columns.
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+
+--------------------------------------------------------------------------------------------------------------------------
+
+-- Standardizing Date Format
+
+ALTER TABLE NashvilleHousing
+Add SaleDateConverted Date;
+
+Update NashvilleHousing
+SET SaleDateConverted = CONVERT(Date,SaleDate)
+
+Select saleDateConverted, CONVERT(Date,SaleDate)
+From PortfolioProject.dbo.NashvilleHousing
+
+ --------------------------------------------------------------------------------------------------------------------------
+-- Populate Property Address data --
+
+--checking for null values and possible ways to fill it up
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+--Where PropertyAddress is null
+order by ParcelID
+
+
+--Fill out the null values
+Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress, ISNULL(a.PropertyAddress,b.PropertyAddress) --This means if apropertyaddress is null, populate it with bpropertyaddress
+From PortfolioProject.dbo.NashvilleHousing a
+JOIN PortfolioProject.dbo.NashvilleHousing b
+	on a.ParcelID = b.ParcelID
+	AND a.[UniqueID ] <> b.[UniqueID ]  -- <> means is not equal to
+Where a.PropertyAddress is null
+
+
+--Updating the file after which the null values will disappear in the dataset
+Update a
+SET PropertyAddress = ISNULL(a.PropertyAddress,b.PropertyAddress)
+From PortfolioProject.dbo.NashvilleHousing a
+JOIN PortfolioProject.dbo.NashvilleHousing b
+	on a.ParcelID = b.ParcelID
+	AND a.[UniqueID ] <> b.[UniqueID ]
+Where a.PropertyAddress is null
+
+-- if you run this again . you have no output which means it has been updated and theres no longer a null value
+Select a.ParcelID, a.PropertyAddress, b.ParcelID, b.PropertyAddress, ISNULL(a.PropertyAddress,b.PropertyAddress) --This means if apropertyaddress is null, populate it with bpropertyaddress
+From PortfolioProject.dbo.NashvilleHousing a
+JOIN PortfolioProject.dbo.NashvilleHousing b
+	on a.ParcelID = b.ParcelID
+	AND a.[UniqueID ] <> b.[UniqueID ]  -- <> means is not equal to
+Where a.PropertyAddress is null
+
+
+
+--------------------------------------------------------------------------------------------------------------------------
+
+--Key note: a delimiter seperates different columns or different values 
+
+-- Breaking out PropertyAddress into Individual Columns (Address, City, State)
+Select PropertyAddress
+From PortfolioProject.dbo.NashvilleHousing
+
+-- charindex is used to look for a specific variable ",". It can also be used to search for words
+-- 1 is saying return the first value
+-- -1 is saying ignore the last value
+SELECT
+SUBSTRING(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) -1 ) as Address 
+, SUBSTRING(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1 , LEN(PropertyAddress)) as Address -- +1 in this context removes the comma
+From PortfolioProject.dbo.NashvilleHousing
+
+-- Update this changes in the dataset
+ALTER TABLE NashvilleHousing
+Add PropertySplitAddress Nvarchar(255);
+
+Update NashvilleHousing
+SET PropertySplitAddress = SUBSTRING(PropertyAddress, 1, CHARINDEX(',', PropertyAddress) -1 )
+
+
+ALTER TABLE NashvilleHousing
+Add PropertySplitCity Nvarchar(255);
+
+Update NashvilleHousing
+SET PropertySplitCity = SUBSTRING(PropertyAddress, CHARINDEX(',', PropertyAddress) + 1 , LEN(PropertyAddress))
+
+-- View the entire dataset again to see if the changes have been made.
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+
+-- Breaking out OwnerAddress into Individual Columns (Address, City, State)
+Select OwnerAddress
+From PortfolioProject.dbo.NashvilleHousing
+
+--parsename is useful for delimiter value and basically looks for fullstop so we replace the comma with period
+--parename does things backward thats why we  have 3 cus its the third word seperated with a comma
+Select
+PARSENAME(REPLACE(OwnerAddress, ',', '.') , 3)
+,PARSENAME(REPLACE(OwnerAddress, ',', '.') , 2)
+,PARSENAME(REPLACE(OwnerAddress, ',', '.') , 1)
+From PortfolioProject.dbo.NashvilleHousing
+
+--Update the changes in the dataset
+ALTER TABLE NashvilleHousing
+Add OwnerSplitAddress Nvarchar(255);
+
+Update NashvilleHousing
+SET OwnerSplitAddress = PARSENAME(REPLACE(OwnerAddress, ',', '.') , 3)
+
+ALTER TABLE NashvilleHousing
+Add OwnerSplitCity Nvarchar(255);
+
+Update NashvilleHousing
+SET OwnerSplitCity = PARSENAME(REPLACE(OwnerAddress, ',', '.') , 2)
+
+
+
+ALTER TABLE NashvilleHousing
+Add OwnerSplitState Nvarchar(255);
+
+Update NashvilleHousing
+SET OwnerSplitState = PARSENAME(REPLACE(OwnerAddress, ',', '.') , 1)
+
+--View entire dataset to see if the changes is effective
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+
+--------------------------------------------------------------------------------------------------------------------------
+
+-- Change Y and N to Yes and No in "Sold as Vacant" field
+
+--Returns the count of Y, N, Yes and No in the SoldAsVacant column
+Select Distinct(SoldAsVacant), Count(SoldAsVacant)
+From PortfolioProject.dbo.NashvilleHousing
+Group by SoldAsVacant
+order by 2
+
+--Replacing 'Y' and 'N' with YES and NO respectively
+Select SoldAsVacant
+, CASE When SoldAsVacant = 'Y' THEN 'Yes'
+	   When SoldAsVacant = 'N' THEN 'No'
+	   ELSE SoldAsVacant
+	   END
+From PortfolioProject.dbo.NashvilleHousing
+
+--Updating the changes made.
+Update NashvilleHousing
+SET SoldAsVacant = CASE When SoldAsVacant = 'Y' THEN 'Yes'
+	   When SoldAsVacant = 'N' THEN 'No'
+	   ELSE SoldAsVacant
+	   END
+
+-----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+-- Remove Duplicates
+
+WITH RowNumCTE AS(
+Select *,
+	ROW_NUMBER() OVER (
+	PARTITION BY ParcelID,
+				 PropertyAddress,
+				 SalePrice,
+				 SaleDate,
+				 LegalReference
+				 ORDER BY
+					UniqueID
+					) row_num
+
+From PortfolioProject.dbo.NashvilleHousing
+--order by ParcelID
+)
+Select *   --Replace select with delete to delete all duplicate data. Be careful when deleting
+From RowNumCTE
+Where row_num > 1
+Order by PropertyAddress
+
+--Check if the changes is effective in your dataset
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+
+
+
+
+---------------------------------------------------------------------------------------------------------
+
+-- Delete Unused Columns
+
+Select *
+From PortfolioProject.dbo.NashvilleHousing
+
+
+ALTER TABLE PortfolioProject.dbo.NashvilleHousing
+DROP COLUMN OwnerAddress, TaxDistrict, PropertyAddress, SaleDate
